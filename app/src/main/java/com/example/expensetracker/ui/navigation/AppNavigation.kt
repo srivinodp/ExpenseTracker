@@ -24,9 +24,8 @@ import com.example.expensetracker.ui.ExpenseViewModelFactory
 import com.example.expensetracker.ui.screens.DashboardScreen
 import com.example.expensetracker.ui.screens.LogExpenseScreen
 
-sealed class Screen(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Home)
-    object LogExpense : Screen("log_expense", "Log Expense", Icons.Default.Add)
+sealed class Screen(val route: String) {
+    object Dashboard : Screen("dashboard")
 }
 
 @Composable
@@ -38,65 +37,37 @@ fun AppNavigation() {
         factory = ExpenseViewModelFactory(database.expenseDao())
     )
 
-    val items = listOf(Screen.Dashboard, Screen.LogExpense)
-
-    Scaffold(
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ) {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-                items.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = null) },
-                        label = { Text(screen.label) },
-                        selected = currentDestination?.hierarchy?.any { 
-                            it.route == screen.route || it.route?.startsWith("${screen.route}?") == true 
-                        } == true,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    )
+    NavHost(
+        navController = navController,
+        startDestination = Screen.Dashboard.route
+    ) {
+        composable(Screen.Dashboard.route) {
+            DashboardScreen(
+                viewModel = viewModel,
+                onAddExpense = {
+                    navController.navigate("log_expense")
+                },
+                onEditExpense = { expenseId ->
+                    navController.navigate("log_expense?expenseId=$expenseId")
                 }
-            }
+            )
         }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Dashboard.route,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(Screen.Dashboard.route) {
-                DashboardScreen(
-                    viewModel = viewModel,
-                    onEditExpense = { expenseId ->
-                        navController.navigate("log_expense?expenseId=$expenseId")
-                    }
-                )
-            }
-            composable(
-                route = "log_expense?expenseId={expenseId}",
-                arguments = listOf(
-                    navArgument("expenseId") {
-                        type = NavType.IntType
-                        defaultValue = -1
-                    }
-                )
-            ) { backStackEntry ->
-                val expenseId = backStackEntry.arguments?.getInt("expenseId") ?: -1
-                LogExpenseScreen(
-                    viewModel = viewModel,
-                    expenseId = if (expenseId != -1) expenseId else null,
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
+        composable(
+            route = "log_expense?expenseId={expenseId}",
+            arguments = listOf(
+                navArgument("expenseId") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                }
+            )
+        ) { backStackEntry ->
+            val expenseId = backStackEntry.arguments?.getInt("expenseId") ?: -1
+            LogExpenseScreen(
+                viewModel = viewModel,
+                expenseId = if (expenseId != -1) expenseId else null,
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }
+
