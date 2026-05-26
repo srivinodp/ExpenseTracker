@@ -6,11 +6,14 @@ Expense Tracker is a modern, premium, and fully offline Android application buil
 
 ## ✨ Features
 
-- 💰 **Expense Logging**: Log transactions with an amount (₹), descriptive notes, a category selector, and a custom date picker.
-- 📈 **Spending Trends (Bar Chart)**: Rich Vico-powered bar chart mapping historical trends with an ultra-premium **Day/Month toggle switch** and custom formatted X-axis labels (e.g., `26 May` or `May 2026`).
+- 🧠 **Rules-Based Heuristic Insights**: Uses a pure local rules-based engine comparing **current month** to **previous month** data (spikes >10%, savings >15%, stayed-at-home Transport warnings, top contributions) to generate actionable insights.
+- 💳 **Horizontal Gradient Summary Card**: A beautifully styled top card displaying monthly spent totals with a preview of the topmost critical insight. Clicking the card opens a Material 3 `ModalBottomSheet` showing a color-coded vertical insights feed.
+- ➕ **FAB Navigation & Streamlined Scaffold**: Removed persistent bottom navigation to maximize screen space; primary logging is handled through a Scaffold-nested Floating Action Button (FAB).
+- 🧹 **Swipe-to-Delete Gestures**: Native Material 3 `SwipeToDismissBox` support allowing users to swipe transactions from right to left with a smooth red background to delete immediately, alongside confirmative dialog safety.
+- 🏷️ **Visual Category Selector Chips**: Replaced multi-tap dropdowns with a selectable `FlowRow` of `FilterChip` components color-bulleted to match the dashboard pie chart slices.
+- 🔙 **TopAppBar Back Navigation**: Configured a native M3 `TopAppBar` header with an Arrow Back button on the logging/editing screen for seamless Android screen routing.
+- 📈 **Spending Trends (Bar Chart)**: Vico-powered bar chart mapping historical trends with a segmented **Day/Month toggle switch** and custom formatted X-axis labels (e.g., `26 May` or `May 2026`).
 - 🥧 **Category Breakdown (Pie Chart)**: Beautiful Canvas-based expense distribution chart with stable category colors (`Food`, `Transport`, `Utilities`, `Entertainment`, `Shopping`, `Other`) and clean, circular legend bullet alignments.
-- ✍️ **Manage Transactions**: Quick edit and delete operations with instant UI state updates and Material 3 confirmation dialogs.
-- 🌓 **Dynamic Themes**: Tailored Material 3 color system with gorgeous light mode and high-contrast dark mode integrations.
 - 🗄️ **Persistent Room Database**: Secure, offline-first local data storage using a structured DAO repository and reactive Kotlin Flows.
 
 ---
@@ -64,12 +67,13 @@ app/src/main/java/com/example/expensetracker/
 │   ├── ExpenseDao.kt               # DAO defining SQLite queries and operations
 │   └── ExpenseDatabase.kt          # Main Room Database initializer
 ├── ui/
+│   ├── HeuristicEngine.kt          # Local rules-based comparative insights calculator
 │   ├── ExpenseViewModel.kt         # ViewModel managing state flows and DB interactions
 │   ├── navigation/
-│   │   └── AppNavigation.kt        # App routes and bottom navigation bar
+│   │   └── AppNavigation.kt        # App routing and Navigation graph (no bottom bar)
 │   ├── screens/
-│   │   ├── DashboardScreen.kt      # Main dashboard with bar chart, pie chart, and list
-│   │   └── LogExpenseScreen.kt     # Log/Edit expense form screen
+│   │   ├── DashboardScreen.kt      # Main dashboard with bar/pie charts, gradient card, and list
+│   │   └── LogExpenseScreen.kt     # Log/Edit expense form with visual chips and TopAppBar header
 │   └── theme/
 │       └── Theme.kt                # Light and Dark colors and theme configurations
 ```
