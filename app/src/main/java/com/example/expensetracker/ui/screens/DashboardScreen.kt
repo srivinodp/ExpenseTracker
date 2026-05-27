@@ -77,6 +77,10 @@ enum class TrendPeriod {
     DAY, MONTH
 }
 
+enum class PiePeriod {
+    THIS_MONTH, LAST_MONTH, ALL_TIME
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -90,6 +94,7 @@ fun DashboardScreen(
     var showInsightsSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var piePeriod by remember { mutableStateOf(PiePeriod.THIS_MONTH) }
 
     // --- Heuristic Insights Computations at function top-level scope ---
     val nowCalendar = remember { Calendar.getInstance() }
@@ -103,9 +108,44 @@ fun DashboardScreen(
         }.sumOf { it.amount }
     }
 
+    val lastMonthSpent = remember(expenses) {
+        val lastMonthCal = (nowCalendar.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
+        val lastMonthYear = lastMonthCal.get(Calendar.YEAR)
+        val lastMonthVal = lastMonthCal.get(Calendar.MONTH)
+        expenses.filter {
+            val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
+            cal.get(Calendar.YEAR) == lastMonthYear && cal.get(Calendar.MONTH) == lastMonthVal
+        }.sumOf { it.amount }
+    }
+
     // Process data for charts
-    val categoryTotals = expenses.groupBy { it.category }
-        .mapValues { it.value.sumOf { exp -> exp.amount } }
+    val categoryTotals = remember(expenses, piePeriod) {
+        val currentYear = nowCalendar.get(Calendar.YEAR)
+        val currentMonth = nowCalendar.get(Calendar.MONTH)
+        
+        val lastMonthCal = (nowCalendar.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
+        val lastMonthYear = lastMonthCal.get(Calendar.YEAR)
+        val lastMonthVal = lastMonthCal.get(Calendar.MONTH)
+        
+        val filtered = when (piePeriod) {
+            PiePeriod.THIS_MONTH -> {
+                expenses.filter {
+                    val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
+                    cal.get(Calendar.YEAR) == currentYear && cal.get(Calendar.MONTH) == currentMonth
+                }
+            }
+            PiePeriod.LAST_MONTH -> {
+                expenses.filter {
+                    val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
+                    cal.get(Calendar.YEAR) == lastMonthYear && cal.get(Calendar.MONTH) == lastMonthVal
+                }
+            }
+            PiePeriod.ALL_TIME -> expenses
+        }
+        
+        filtered.groupBy { it.category }
+            .mapValues { it.value.sumOf { exp -> exp.amount } }
+    }
 
     val sdfDayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     val sdfDayDisplay = SimpleDateFormat("dd MMM", Locale.getDefault())
@@ -550,34 +590,67 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Spent This Month",
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = "View Details",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Column {
+                                Text(
+                                    text = "Spent This Month",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "₹${String.format(Locale.US, "%,.2f", currentMonthSpent)}",
+                                    color = Color.White,
+                                    fontSize = 30.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            
+                            // Visual comparison badge against last month
+                            if (lastMonthSpent > 0.0) {
+                                val diffPct = ((currentMonthSpent - lastMonthSpent) / lastMonthSpent) * 100.0
+                                val isIncrease = diffPct > 0.0
+                                val badgeText = if (isIncrease) {
+                                    String.format(Locale.US, "▲ +%.1f%%", diffPct)
+                                } else {
+                                    String.format(Locale.US, "▼ -%.1f%%", Math.abs(diffPct))
+                                }
+                                val badgeBgColor = if (isIncrease) Color(0xFFFF5252).copy(alpha = 0.3f) else Color(0xFF00BFA5).copy(alpha = 0.3f)
+                                val badgeTextColor = if (isIncrease) Color(0xFFFF8A80) else Color(0xFFB9F6CA)
+                                
+                                Surface(
+                                    color = badgeBgColor,
+                                    shape = CircleShape,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        color = badgeTextColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = "View Details",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                         
-                        Spacer(modifier = Modifier.height(4.dp))
+                        // Select the primary advisory insight (Prefer Category Spikes/Savings, fallback to general top insight)
+                        val primaryAdvice = remember(insights) {
+                            insights.firstOrNull { it.type == InsightType.CATEGORY_SPIKE || it.type == InsightType.CATEGORY_SAVINGS }
+                                ?: insights.firstOrNull { it.type == InsightType.LARGEST_EXPENSE }
+                                ?: insights.firstOrNull()
+                        }
                         
-                        Text(
-                            text = "₹${String.format(Locale.US, "%,.2f", currentMonthSpent)}",
-                            color = Color.White,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        val topInsight = insights.firstOrNull()
-                        if (topInsight != null) {
-                            val (insightIcon, insightIconTint) = when (topInsight.severity) {
+                        if (primaryAdvice != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            val (insightIcon, insightIconTint) = when (primaryAdvice.severity) {
                                 InsightSeverity.WARNING -> Icons.Default.Warning to Color(0xFFFF8A80)
                                 InsightSeverity.SUCCESS -> Icons.Default.TrendingDown to Color(0xFFB9F6CA)
                                 InsightSeverity.INFO -> Icons.Default.Info to Color(0xFF82B1FF)
@@ -600,13 +673,13 @@ fun DashboardScreen(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = topInsight.title,
+                                        text = primaryAdvice.title,
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp
                                     )
                                     Text(
-                                        text = topInsight.description,
+                                        text = primaryAdvice.description,
                                         color = Color.White.copy(alpha = 0.9f),
                                         fontSize = 11.sp,
                                         lineHeight = 14.sp
@@ -645,7 +718,46 @@ fun DashboardScreen(
                     contentPadding = PaddingValues(bottom = 32.dp)
                 ) {
                     item {
-                        Text("Category Breakdown", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Category Breakdown", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+                            
+                            Row(
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape)
+                                    .padding(2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf(
+                                    PiePeriod.THIS_MONTH to "This Month",
+                                    PiePeriod.LAST_MONTH to "Last Month",
+                                    PiePeriod.ALL_TIME to "All"
+                                ).forEach { (period, label) ->
+                                    val isSelected = piePeriod == period
+                                    Surface(
+                                        onClick = { piePeriod = period },
+                                        shape = CircleShape,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         PieChart(categoryTotals)
                         Spacer(modifier = Modifier.height(32.dp))
@@ -710,10 +822,20 @@ fun DashboardScreen(
                                 }
                             }
 
+                            val startAxisValueFormatter = AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ ->
+                                val amt = value.toInt()
+                                when {
+                                    amt >= 1000 -> "₹${String.format(Locale.US, "%.1fk", amt / 1000f)}"
+                                    else -> "₹$amt"
+                                }
+                            }
+
                             Chart(
                                 chart = columnChart(),
                                 model = entryModelOf(entries),
-                                startAxis = rememberStartAxis(),
+                                startAxis = rememberStartAxis(
+                                    valueFormatter = startAxisValueFormatter
+                                ),
                                 bottomAxis = rememberBottomAxis(
                                     valueFormatter = bottomAxisValueFormatter
                                 )

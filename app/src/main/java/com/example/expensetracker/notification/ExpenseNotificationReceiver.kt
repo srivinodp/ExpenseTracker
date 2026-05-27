@@ -40,10 +40,9 @@ class ExpenseNotificationReceiver : BroadcastReceiver() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        // Direct the user to the log screen and pre-select the 'Transport' category
+        // General App launch click intent (takes user to Dashboard)
         val clickIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("navigate_to", "log_expense?category=Transport")
         }
         
         val pendingIntent = PendingIntent.getActivity(
@@ -53,13 +52,39 @@ class ExpenseNotificationReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Action 1: Log Travel
+        val travelIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("navigate_to", "log_expense?category=Transport")
+        }
+        val travelPendingIntent = PendingIntent.getActivity(
+            context,
+            2001,
+            travelIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 2: Log Food
+        val foodIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("navigate_to", "log_expense?category=Food")
+        }
+        val foodPendingIntent = PendingIntent.getActivity(
+            context,
+            2002,
+            foodIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("Log Travel Expenses")
-            .setContentText("Did you travel today? Tap to log your travel and other expenses for the day.")
+            .setContentTitle("Daily Expense Reminder")
+            .setContentText("Did you spend on travel, food, or other things today? Log it in one tap!")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_menu_compass, "Log Travel", travelPendingIntent)
+            .addAction(android.R.drawable.ic_menu_today, "Log Food", foodPendingIntent)
             .build()
 
         notificationManager.notify(1001, notification)
