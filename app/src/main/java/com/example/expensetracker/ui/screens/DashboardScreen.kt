@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.example.expensetracker.util.ExportUtils
@@ -77,10 +78,6 @@ enum class TrendPeriod {
     DAY, MONTH
 }
 
-enum class PiePeriod {
-    THIS_MONTH, LAST_MONTH, ALL_TIME
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -94,7 +91,43 @@ fun DashboardScreen(
     var showInsightsSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
-    var piePeriod by remember { mutableStateOf(PiePeriod.THIS_MONTH) }
+    
+    val currentMonthKey = remember {
+        SimpleDateFormat("yyyy-MM", Locale.US).format(Date())
+    }
+    
+    val availablePeriods = remember(expenses) {
+        val sdfMonthKey = SimpleDateFormat("yyyy-MM", Locale.US)
+        val sdfMonthDisplay = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+        
+        val uniqueMonthsMap = mutableMapOf<String, String>()
+        
+        // Always include the current month
+        val nowCal = Calendar.getInstance()
+        val currentKey = sdfMonthKey.format(nowCal.time)
+        val currentDisplay = sdfMonthDisplay.format(nowCal.time)
+        uniqueMonthsMap[currentKey] = currentDisplay
+        
+        expenses.forEach { exp ->
+            val date = Date(exp.timestamp)
+            val key = sdfMonthKey.format(date)
+            val display = sdfMonthDisplay.format(date)
+            uniqueMonthsMap[key] = display
+        }
+        
+        val sortedKeys = uniqueMonthsMap.keys.sortedDescending()
+        
+        val list = mutableListOf<Pair<String, String>>()
+        list.add("Overall" to "Overall")
+        
+        sortedKeys.forEach { key ->
+            list.add(key to uniqueMonthsMap[key]!!)
+        }
+        
+        list
+    }
+
+    var selectedPiePeriodKey by remember { mutableStateOf(currentMonthKey) }
 
     // --- Heuristic Insights Computations at function top-level scope ---
     val nowCalendar = remember { Calendar.getInstance() }
@@ -119,28 +152,15 @@ fun DashboardScreen(
     }
 
     // Process data for charts
-    val categoryTotals = remember(expenses, piePeriod) {
-        val currentYear = nowCalendar.get(Calendar.YEAR)
-        val currentMonth = nowCalendar.get(Calendar.MONTH)
+    val categoryTotals = remember(expenses, selectedPiePeriodKey) {
+        val sdfMonthKey = SimpleDateFormat("yyyy-MM", Locale.US)
         
-        val lastMonthCal = (nowCalendar.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
-        val lastMonthYear = lastMonthCal.get(Calendar.YEAR)
-        val lastMonthVal = lastMonthCal.get(Calendar.MONTH)
-        
-        val filtered = when (piePeriod) {
-            PiePeriod.THIS_MONTH -> {
-                expenses.filter {
-                    val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
-                    cal.get(Calendar.YEAR) == currentYear && cal.get(Calendar.MONTH) == currentMonth
-                }
+        val filtered = if (selectedPiePeriodKey == "Overall") {
+            expenses
+        } else {
+            expenses.filter {
+                sdfMonthKey.format(Date(it.timestamp)) == selectedPiePeriodKey
             }
-            PiePeriod.LAST_MONTH -> {
-                expenses.filter {
-                    val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
-                    cal.get(Calendar.YEAR) == lastMonthYear && cal.get(Calendar.MONTH) == lastMonthVal
-                }
-            }
-            PiePeriod.ALL_TIME -> expenses
         }
         
         filtered.groupBy { it.category }
@@ -718,6 +738,8 @@ fun DashboardScreen(
                     contentPadding = PaddingValues(bottom = 32.dp)
                 ) {
                     item {
+                        var dropdownExpanded by remember { mutableStateOf(false) }
+                        
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -725,35 +747,38 @@ fun DashboardScreen(
                         ) {
                             Text("Category Breakdown", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
                             
-                            Row(
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape)
-                                    .padding(2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf(
-                                    PiePeriod.THIS_MONTH to "This",
-                                    PiePeriod.LAST_MONTH to "Last",
-                                    PiePeriod.ALL_TIME to "Overall"
-                                ).forEach { (period, label) ->
-                                    val isSelected = piePeriod == period
-                                    Surface(
-                                        onClick = { piePeriod = period },
-                                        shape = CircleShape,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.height(26.dp)
-                                    ) {
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier = Modifier.padding(horizontal = 8.dp)
-                                        ) {
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
+                            Box {
+                                val currentLabel = availablePeriods.find { it.first == selectedPiePeriodKey }?.second ?: "Overall"
+                                
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { dropdownExpanded = true },
+                                    label = { Text(currentLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Select Period",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                                
+                                DropdownMenu(
+                                    expanded = dropdownExpanded,
+                                    onDismissRequest = { dropdownExpanded = false }
+                                ) {
+                                    availablePeriods.forEach { (key, display) ->
+                                        DropdownMenuItem(
+                                            text = { Text(display) },
+                                            onClick = {
+                                                selectedPiePeriodKey = key
+                                                dropdownExpanded = false
+                                            }
+                                        )
                                     }
                                 }
                             }
