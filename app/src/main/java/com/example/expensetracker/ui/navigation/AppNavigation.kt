@@ -37,6 +37,16 @@ fun AppNavigation() {
         factory = ExpenseViewModelFactory(database.expenseDao())
     )
 
+    // Handle deep-linking/redirection from notification launch intent
+    val activity = context as? android.app.Activity
+    androidx.compose.runtime.LaunchedEffect(activity?.intent) {
+        val navigateTo = activity?.intent?.getStringExtra("navigate_to")
+        if (navigateTo != null) {
+            activity.intent.removeExtra("navigate_to")
+            navController.navigate(navigateTo)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Dashboard.route
@@ -53,18 +63,25 @@ fun AppNavigation() {
             )
         }
         composable(
-            route = "log_expense?expenseId={expenseId}",
+            route = "log_expense?expenseId={expenseId}&category={category}",
             arguments = listOf(
                 navArgument("expenseId") {
                     type = NavType.IntType
                     defaultValue = -1
+                },
+                navArgument("category") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val expenseId = backStackEntry.arguments?.getInt("expenseId") ?: -1
+            val category = backStackEntry.arguments?.getString("category")
             LogExpenseScreen(
                 viewModel = viewModel,
                 expenseId = if (expenseId != -1) expenseId else null,
+                initialCategory = category,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

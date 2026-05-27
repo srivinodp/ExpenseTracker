@@ -1,7 +1,11 @@
 package com.example.expensetracker.ui.screens
 
+import android.app.DatePickerDialog
+import android.widget.DatePicker
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,8 +18,17 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.example.expensetracker.util.ExportUtils
+import com.example.expensetracker.util.PreferenceUtils
+import com.example.expensetracker.notification.ExpenseNotificationScheduler
+import androidx.compose.ui.platform.LocalContext
+import android.app.TimePickerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -75,6 +88,8 @@ fun DashboardScreen(
     var expenseToDelete by remember { mutableStateOf<ExpenseEntity?>(null) }
     var selectedPeriod by remember { mutableStateOf(TrendPeriod.DAY) }
     var showInsightsSheet by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     // --- Heuristic Insights Computations at function top-level scope ---
     val nowCalendar = remember { Calendar.getInstance() }
@@ -148,6 +163,330 @@ fun DashboardScreen(
         )
     }
 
+    // Export Report Dialog
+    if (showExportDialog) {
+        val context = LocalContext.current
+        var exportStartDate by remember {
+            mutableStateOf(
+                Calendar.getInstance().apply {
+                    set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                }.timeInMillis
+            )
+        }
+        var exportEndDate by remember {
+            mutableStateOf(System.currentTimeMillis())
+        }
+
+        val displayFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+
+        val startCal = Calendar.getInstance().apply { timeInMillis = exportStartDate }
+        val startDatePickerDialog = DatePickerDialog(
+            context,
+            { _: DatePicker, year: Int, month: Int, dayOfMonth: Int ->
+                val cal = Calendar.getInstance()
+                cal.set(year, month, dayOfMonth, 0, 0, 0)
+                exportStartDate = cal.timeInMillis
+            },
+            startCal.get(Calendar.YEAR),
+            startCal.get(Calendar.MONTH),
+            startCal.get(Calendar.DAY_OF_MONTH)
+        )
+
+        val endCal = Calendar.getInstance().apply { timeInMillis = exportEndDate }
+        val endDatePickerDialog = DatePickerDialog(
+            context,
+            { _: DatePicker, year: Int, month: Int, dayOfMonth: Int ->
+                val cal = Calendar.getInstance()
+                cal.set(year, month, dayOfMonth, 23, 59, 59)
+                exportEndDate = cal.timeInMillis
+            },
+            endCal.get(Calendar.YEAR),
+            endCal.get(Calendar.MONTH),
+            endCal.get(Calendar.DAY_OF_MONTH)
+        )
+
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("Export Expense Report", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Download your expenses in Excel-compatible CSV format. Select the date range below:",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("Start Date", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedButton(
+                        onClick = { startDatePickerDialog.show() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(displayFormat.format(Date(exportStartDate)))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("End Date", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedButton(
+                        onClick = { endDatePickerDialog.show() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(displayFormat.format(Date(exportEndDate)))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        ExportUtils.exportAndShareExpenses(context, expenses, exportStartDate, exportEndDate)
+                        showExportDialog = false
+                    }
+                ) {
+                    Text("Export & Share")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Custom Settings Dialog
+    if (showSettingsDialog) {
+        val context = LocalContext.current
+        
+        // Reminder States
+        var isReminderEnabled by remember { mutableStateOf(PreferenceUtils.isReminderEnabled(context)) }
+        var reminderHour by remember { mutableStateOf(PreferenceUtils.getReminderHour(context)) }
+        var reminderMinute by remember { mutableStateOf(PreferenceUtils.getReminderMinute(context)) }
+        
+        // Categories States
+        var categoriesList by remember { mutableStateOf(PreferenceUtils.getCategories(context)) }
+        var newCategoryName by remember { mutableStateOf("") }
+        var categoryError by remember { mutableStateOf<String?>(null) }
+        
+        val timePickerDialog = TimePickerDialog(
+            context,
+            { _, hourOfDay, minuteOfHour ->
+                reminderHour = hourOfDay
+                reminderMinute = minuteOfHour
+                PreferenceUtils.setReminderTime(context, hourOfDay, minuteOfHour)
+                ExpenseNotificationScheduler.scheduleDailyNotification(context)
+            },
+            reminderHour,
+            reminderMinute,
+            false // Use 12-hour format with AM/PM picker
+        )
+
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Settings", fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { showSettingsDialog = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp) // Constrain height and make it scrollable if many categories are added
+                ) {
+                    TabRow(selectedTabIndex = 0, containerColor = Color.Transparent) {
+                        Tab(
+                            selected = true,
+                            onClick = {},
+                            text = { Text("Preferences", fontWeight = FontWeight.Bold) }
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Scrollable section for configurations
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Section 1: Notifications
+                        item {
+                            Text(
+                                "Daily Reminder Notification",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Enable Daily Reminder", fontSize = 14.sp)
+                                Switch(
+                                    checked = isReminderEnabled,
+                                    onCheckedChange = { isChecked ->
+                                        isReminderEnabled = isChecked
+                                        PreferenceUtils.setReminderEnabled(context, isChecked)
+                                        ExpenseNotificationScheduler.scheduleDailyNotification(context)
+                                    }
+                                )
+                            }
+                            
+                            if (isReminderEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Reminder Time", fontSize = 14.sp)
+                                    
+                                    val amPm = if (reminderHour >= 12) "PM" else "AM"
+                                    val hour12 = when {
+                                        reminderHour == 0 -> 12
+                                        reminderHour > 12 -> reminderHour - 12
+                                        else -> reminderHour
+                                    }
+                                    val timeStr = String.format(Locale.US, "%02d:%02d %s", hour12, reminderMinute, amPm)
+                                    
+                                    OutlinedButton(onClick = { timePickerDialog.show() }) {
+                                        Text(timeStr)
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(20.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        
+                        // Section 2: Manage Categories
+                        item {
+                            Text(
+                                "Manage Categories",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Add Category input
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = newCategoryName,
+                                    onValueChange = {
+                                        newCategoryName = it
+                                        categoryError = null
+                                    },
+                                    placeholder = { Text("New Category") },
+                                    isError = categoryError != null,
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        val trimmed = newCategoryName.trim()
+                                        if (trimmed.isEmpty()) {
+                                            categoryError = "Cannot be empty"
+                                        } else if (PreferenceUtils.addCategory(context, trimmed)) {
+                                            newCategoryName = ""
+                                            categoryError = null
+                                            categoriesList = PreferenceUtils.getCategories(context)
+                                        } else {
+                                            categoryError = "Already exists"
+                                        }
+                                    }
+                                ) {
+                                    Text("Add")
+                                }
+                            }
+                            
+                            if (categoryError != null) {
+                                Text(
+                                    text = categoryError ?: "",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        
+                        // List categories
+                        items(categoriesList) { category ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(
+                                                color = getCategoryColor(category, categoriesList.indexOf(category)),
+                                                shape = CircleShape
+                                            )
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(category, fontSize = 14.sp)
+                                }
+                                
+                                // Disable deleting "Other" or if only 1 category remains
+                                val canDelete = categoriesList.size > 1
+                                if (canDelete) {
+                                    IconButton(
+                                        onClick = {
+                                            PreferenceUtils.deleteCategory(context, category)
+                                            categoriesList = PreferenceUtils.getCategories(context)
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSettingsDialog = false }) {
+                    Text("Done")
+                }
+            }
+        )
+    }
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -169,7 +508,20 @@ fun DashboardScreen(
                 .padding(innerPadding)
                 .padding(16.dp)
         ) {
-            Text("Dashboard", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Dashboard", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = { showSettingsDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
             // --- Heuristic Summary Card ---
@@ -380,7 +732,20 @@ fun DashboardScreen(
                     }
 
                     item {
-                        Text("All Transactions", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("All Transactions", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+                            IconButton(onClick = { showExportDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Export to Excel/CSV",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
@@ -588,52 +953,176 @@ fun ExpenseRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
+    val fullDateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = if (expanded) {
+                MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
+        )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .clickable { expanded = !expanded }
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(expense.category, fontWeight = FontWeight.Bold)
-                if (expense.description.isNotEmpty()) {
-                    Text(expense.description, fontSize = 12.sp, color = Color.Gray)
-                }
-                Text(dateFormat.format(Date(expense.timestamp)), fontSize = 12.sp, color = Color.Gray)
-            }
-            
+            // Compact Header Row (Always Visible)
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Colored Category Indicator Dot
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(color = getCategoryColor(expense.category, 0), shape = CircleShape)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                // Category (Type) Name
                 Text(
-                    "₹${expense.amount}",
+                    text = expense.category,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                // Date (e.g. "27 May")
+                Text(
+                    text = dateFormat.format(Date(expense.timestamp)),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                
+                // Amount
+                Text(
+                    text = "₹${expense.amount}",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(end = 8.dp)
+                    fontSize = 16.sp
                 )
-                IconButton(onClick = onEdit) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit",
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error
-                    )
+            }
+
+            // Expanded Details Block
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+                    
+                    // Description
+                    if (expense.description.isNotEmpty()) {
+                        Row(modifier = Modifier.padding(bottom = 6.dp)) {
+                            Text(
+                                text = "Description: ",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = expense.description,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                    
+                    // Full timestamp
+                    Row(modifier = Modifier.padding(bottom = 6.dp)) {
+                        Text(
+                            text = "Date & Time: ",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = fullDateFormat.format(Date(expense.timestamp)),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Category details
+                    Row(modifier = Modifier.padding(bottom = 6.dp)) {
+                        Text(
+                            text = "Category: ",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = expense.category,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Amount details
+                    Row(modifier = Modifier.padding(bottom = 12.dp)) {
+                        Text(
+                            text = "Amount: ",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "₹${expense.amount}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    // Action icons row (Edit & Delete)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = onEdit,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Edit", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        TextButton(
+                            onClick = onDelete,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Delete", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
             }
         }

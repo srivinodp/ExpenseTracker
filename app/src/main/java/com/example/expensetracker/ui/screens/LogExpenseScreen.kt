@@ -21,21 +21,24 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.expensetracker.ui.ExpenseViewModel
+import com.example.expensetracker.util.PreferenceUtils
 import java.text.SimpleDateFormat
 import java.util.*
-
-val predefinedCategories = listOf("Food", "Transport", "Utilities", "Entertainment", "Shopping", "Other")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogExpenseScreen(
     viewModel: ExpenseViewModel,
     expenseId: Int? = null,
+    initialCategory: String? = null,
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val categories = remember { PreferenceUtils.getCategories(context) }
+
     var amount by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(predefinedCategories.first()) }
+    var category by remember { mutableStateOf(initialCategory ?: categories.firstOrNull() ?: "Other") }
     
     // Date tracking
     val calendar = Calendar.getInstance()
@@ -57,7 +60,6 @@ fun LogExpenseScreen(
         }
     }
 
-    val context = LocalContext.current
     val datePickerDialog = DatePickerDialog(
         context,
         { _: DatePicker, year: Int, month: Int, dayOfMonth: Int ->
@@ -118,9 +120,9 @@ fun LogExpenseScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                predefinedCategories.forEach { cat ->
+                categories.forEachIndexed { index, cat ->
                     val isSelected = category == cat
-                    val catColor = categoryColorsMap[cat] ?: Color.Gray
+                    val catColor = getCategoryColor(cat, index)
 
                     FilterChip(
                         selected = isSelected,
