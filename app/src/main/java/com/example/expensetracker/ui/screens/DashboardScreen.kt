@@ -732,9 +732,9 @@ fun DashboardScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 listOf(
-                                    PiePeriod.THIS_MONTH to "This Month",
-                                    PiePeriod.LAST_MONTH to "Last Month",
-                                    PiePeriod.ALL_TIME to "All"
+                                    PiePeriod.THIS_MONTH to "This",
+                                    PiePeriod.LAST_MONTH to "Last",
+                                    PiePeriod.ALL_TIME to "Overall"
                                 ).forEach { (period, label) ->
                                     val isSelected = piePeriod == period
                                     Surface(
